@@ -175,7 +175,7 @@ def process_folder_to_milvus(folder_path: str):
 
 if __name__ == "__main__":
     # 示例：从文本文件提取 chunks 并构建 Milvus 库
-    folder = r"D:\Code\agent_desgin\data\KownledgeBase\手册"
+    folder = r"data\KownledgeBase\手册"
     file = "健身追踪器手册.txt"
     
     # print("正在提取文本块...")

@@ -3,166 +3,175 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>多模态智能客服测试终端</title>
+    <title>多模态客服智能体</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        .chat-container { width: 100%; max-width: 600px; height: 90vh; background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; }
-        .chat-header { background: #1a73e8; color: white; padding: 15px; text-align: center; font-size: 1.2em; font-weight: bold; }
-        .config-area { padding: 10px 15px; background: #e8eaed; font-size: 0.9em; display: flex; justify-content: space-between; border-bottom: 1px solid #ccc; }
-        .config-area input { border: 1px solid #ccc; border-radius: 4px; padding: 4px; width: 45%; }
-        .chat-box { flex: 1; padding: 20px; overflow-y: auto; background-color: #f9f9f9; }
-        .message { margin-bottom: 15px; display: flex; flex-direction: column; max-width: 80%; }
-        .message.user { align-self: flex-end; align-items: flex-end; }
-        .message.agent { align-self: flex-start; align-items: flex-start; }
-        .bubble { padding: 10px 15px; border-radius: 15px; line-height: 1.5; word-wrap: break-word; }
-        .message.user .bubble { background: #1a73e8; color: white; border-bottom-right-radius: 2px; }
-        .message.agent .bubble { background: #e0e0e0; color: #333; border-bottom-left-radius: 2px; }
-        .img-preview { max-width: 150px; border-radius: 8px; margin-top: 5px; border: 1px solid #ccc; }
-        .input-area { display: flex; padding: 15px; background: white; border-top: 1px solid #ddd; align-items: center; }
-        .upload-btn { background: #f1f3f4; border: 1px solid #ccc; border-radius: 50%; width: 40px; height: 40px; font-size: 1.2em; cursor: pointer; display: flex; justify-content: center; align-items: center; margin-right: 10px; }
-        .input-area input[type="text"] { flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 20px; outline: none; font-size: 1em; }
-        .input-area button.send-btn { background: #1a73e8; color: white; border: none; border-radius: 20px; padding: 10px 20px; margin-left: 10px; cursor: pointer; font-weight: bold; }
-        .input-area button.send-btn:disabled { background: #ccc; cursor: not-allowed; }
-        #file-input { display: none; }
-        .thumbnail-container { display: flex; gap: 5px; padding: 0 15px 10px; background: white; }
-        .thumbnail { width: 50px; height: 50px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .chat-container { width: 100%; max-width: 500px; background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: flex; flex-direction: column; height: 80vh; overflow: hidden; }
+        .header { background: #007bff; color: white; padding: 15px; text-align: center; font-weight: bold; font-size: 1.2em; }
+        .chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
+        .message { max-width: 80%; padding: 10px 15px; border-radius: 8px; line-height: 1.4; word-wrap: break-word; }
+        .user-msg { background: #007bff; color: white; align-self: flex-end; border-bottom-right-radius: 0; }
+        .bot-msg { background: #e9ecef; color: #333; align-self: flex-start; border-bottom-left-radius: 0; }
+        .bot-msg img { max-width: 100%; border-radius: 4px; margin-top: 5px; }
+        .input-area { padding: 15px; background: #fff; border-top: 1px solid #ddd; display: flex; flex-direction: column; gap: 10px; }
+        .controls { display: flex; gap: 10px; align-items: center; }
+        input[type="text"] { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 6px; outline: none; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .image-preview { display: flex; gap: 10px; overflow-x: auto; }
+        .image-preview img { height: 50px; border-radius: 4px; border: 1px solid #ddd; }
+        .pic-tag { color: #d9534f; font-weight: bold; font-size: 0.9em; background: #fdf2f2; padding: 2px 4px; border-radius: 4px; border: 1px solid #d9534f; }
     </style>
 </head>
 <body>
 
 <div class="chat-container">
-    <div class="chat-header">多模态客服智能体测试</div>
+    <div class="header">多模态智能客服</div>
+    <div class="chat-box" id="chatBox">
+        <div class="message bot-msg">您好！我是智能客服，请问有什么可以帮您？</div>
+    </div>
     
-    <div class="config-area">
-        <input type="text" id="api-url" value="http://127.0.0.1:8000/chat" placeholder="API 地址">
-        <input type="text" id="api-token" value="sk_customer_20260304" placeholder="KAFU_API_TOKEN">
-    </div>
-
-    <div class="chat-box" id="chat-box" style="display: flex; flex-direction: column;">
-        <div class="message agent"><div class="bubble">您好！我是您的智能客服助手。请问有什么我可以帮您？</div></div>
-    </div>
-
-    <div class="thumbnail-container" id="thumbnail-container"></div>
-
     <div class="input-area">
-        <input type="file" id="file-input" accept="image/*" multiple>
-        <div class="upload-btn" onclick="document.getElementById('file-input').click()">📷</div>
-        <input type="text" id="question-input" placeholder="输入您的问题..." onkeypress="if(event.key === 'Enter') sendMessage()">
-        <button class="send-btn" id="send-btn" onclick="sendMessage()">发送</button>
+        <div class="image-preview" id="imagePreview"></div>
+        <div class="controls">
+            <input type="file" id="imageInput" accept="image/png, image/jpeg, image/jpg, image/webp" multiple style="display: none;" onchange="handleImageSelect(event)">
+            <button onclick="document.getElementById('imageInput').click()" style="background: #28a745;">+ 图片</button>
+            <input type="text" id="questionInput" placeholder="输入您的问题..." onkeypress="if(event.key === 'Enter') sendMessage()">
+            <button id="sendBtn" onclick="sendMessage()">发送</button>
+        </div>
     </div>
 </div>
 
 <script>
-    // 自动管理会话状态
-    let currentSessionId = null;
-    let selectedImagesBase64 = []; // 存储 Base64 格式图片，包含赛题要求的 data:image/前缀
+    // 配置信息 (对齐赛题规范)
+    const API_URL = "http://localhost:8000/chat";
+    const API_TOKEN = "sk_customer_20260304";
+    
+    let currentSessionId = ""; // 用于维持多轮对话
+    let selectedImagesBase64 = []; // 存储Base64格式的图片
 
-    const fileInput = document.getElementById('file-input');
-    const thumbnailContainer = document.getElementById('thumbnail-container');
-    const chatBox = document.getElementById('chat-box');
+    const chatBox = document.getElementById('chatBox');
+    const questionInput = document.getElementById('questionInput');
+    const imagePreview = document.getElementById('imagePreview');
+    const sendBtn = document.getElementById('sendBtn');
+    const imageInput = document.getElementById('imageInput');
 
-    // 处理图片选择，将其转为完整的 Base64 字符串
-    fileInput.addEventListener('change', function(event) {
+    // 处理图片选择并转为 Base64
+    function handleImageSelect(event) {
         const files = event.target.files;
-        if (files.length + selectedImagesBase64.length > 3) {
-            alert("赛题要求最多仅支持上传 3 张图片！");
+        if (selectedImagesBase64.length + files.length > 3) {
+            alert("最多只能上传3张图片！");
             return;
         }
 
-        Array.from(files).forEach(file => {
+        for (let file of files) {
+            // 校验大小 <= 5MB
+            if (file.size > 5 * 1024 * 1024) {
+                alert(`图片 ${file.name} 超过 5MB 限制`);
+                continue;
+            }
+
             const reader = new FileReader();
             reader.onload = function(e) {
-                // e.target.result 自带 data:image/xxx;base64, 前缀，完美契合赛题规范
-                selectedImagesBase64.push(e.target.result); 
+                // e.target.result 自带 data:image/...;base64, 前缀，完美符合赛题要求
+                selectedImagesBase64.push(e.target.result);
                 
-                // 显示缩略图
-                const img = document.createElement('img');
-                img.src = e.target.result;
-                img.className = 'thumbnail';
-                thumbnailContainer.appendChild(img);
+                // 渲染预览图
+                const imgNode = document.createElement('img');
+                imgNode.src = e.target.result;
+                imagePreview.appendChild(imgNode);
             };
             reader.readAsDataURL(file);
-        });
-        // 清空 input 允许重复选择同名文件
-        fileInput.value = ""; 
-    });
+        }
+        imageInput.value = ""; // 清空 input 允许重复选择同名文件
+    }
 
-    function appendMessage(sender, text, images = []) {
+    // 追加消息到聊天框
+    function appendMessage(role, text, images = []) {
         const msgDiv = document.createElement('div');
-        msgDiv.className = `message ${sender}`;
+        msgDiv.className = `message ${role === 'user' ? 'user-msg' : 'bot-msg'}`;
         
-        let contentHtml = `<div class="bubble">${text.replace(/\n/g, '<br>')}</div>`;
-        
-        // 如果有图片，渲染在文字下方
-        if (images.length > 0) {
-            images.forEach(imgBase64 => {
-                contentHtml += `<img src="${imgBase64}" class="img-preview">`;
-            });
+        // 格式化机器人的 <PIC> 占位符使其更美观
+        let formattedText = text;
+        if (role === 'bot') {
+            formattedText = text.replace(/<PIC>/g, '<span class="pic-tag"> 🖼️[附图说明] </span>');
         }
         
-        msgDiv.innerHTML = contentHtml;
+        let htmlContent = `<div>${formattedText}</div>`;
+        
+        // 如果是用户发送的图片，展示出来
+        if (images.length > 0 && role === 'user') {
+            htmlContent += `<div style="margin-top: 8px;">`;
+            images.forEach(imgB64 => {
+                htmlContent += `<img src="${imgB64}" style="max-height: 100px; margin-right: 5px;">`;
+            });
+            htmlContent += `</div>`;
+        }
+        
+        msgDiv.innerHTML = htmlContent;
         chatBox.appendChild(msgDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
     }
 
+    // 发送消息到后端
     async function sendMessage() {
-        const questionInput = document.getElementById('question-input');
         const question = questionInput.value.trim();
-        const apiUrl = document.getElementById('api-url').value.trim();
-        const apiToken = document.getElementById('api-token').value.trim();
-        const sendBtn = document.getElementById('send-btn');
-
         if (!question && selectedImagesBase64.length === 0) return;
 
-        // 1. 在 UI 上显示用户的提问和图片
+        // 1. 界面更新：显示用户输入
         appendMessage('user', question, selectedImagesBase64);
         
-        // 2. 构造符合赛题规范的 JSON payload
+        // 2. 准备 payload (严格遵守接口文档)
         const payload = {
             question: question,
-            images: selectedImagesBase64
+            images: selectedImagesBase64,
+            stream: false
         };
-        
-        // 如果存在 session_id，则加入 payload 中关联历史对话 
+        // 只有当有了 session_id 才传，否则让后端生成新会话
         if (currentSessionId) {
             payload.session_id = currentSessionId;
         }
 
-        // 清理输入框和图片池，锁定按钮
+        // 清空输入框和图片池
         questionInput.value = '';
-        thumbnailContainer.innerHTML = '';
-        const imagesToSend = [...selectedImagesBase64];
         selectedImagesBase64 = [];
+        imagePreview.innerHTML = '';
+        
+        // 禁用发送按钮，显示 loading
         sendBtn.disabled = true;
         sendBtn.innerText = "思考中...";
 
         try {
-            // 3. 发送 POST 请求，强制携带 Authorization: Bearer {KAFU_API_TOKEN} 
-            const response = await fetch(apiUrl, {
-                method: 'POST',
+            // 3. 发起 Fetch 请求
+            const response = await fetch(API_URL, {
+                method: "POST",
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiToken}`
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${API_TOKEN}` // Token 认证
                 },
                 body: JSON.stringify(payload)
             });
 
             const resData = await response.json();
 
-            if (response.ok && resData.code === 0) {
-                // 4. 解析成功响应，更新 session_id [cite: 73]
-                currentSessionId = resData.data.session_id; 
-                appendMessage('agent', resData.data.answer);
+            if (resData.code === 0) {
+                // 成功：渲染答案并保存 session_id
+                appendMessage('bot', resData.data.answer);
+                currentSessionId = resData.data.session_id; // 关键：保存会话ID实现多轮对话
             } else {
-                appendMessage('agent', `❌ 接口错误: ${resData.detail || resData.msg || '未知错误'}`);
+                appendMessage('bot', `⚠️ 发生错误: ${resData.msg}`);
             }
+
         } catch (error) {
-            appendMessage('agent', `❌ 网络请求失败，请检查服务是否开启且已配置 CORS。\n错误信息: ${error.message}`);
+            appendMessage('bot', `⚠️ 网络请求失败: ${error.message}。请检查后端是否已启动并配置跨域。`);
         } finally {
+            // 恢复按钮状态
             sendBtn.disabled = false;
             sendBtn.innerText = "发送";
         }
     }
 </script>
+
 </body>
 </html>
