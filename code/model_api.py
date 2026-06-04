@@ -11,6 +11,32 @@ QWEN_MODEL = "qwen3.5-flash"
 EMBED_DIM = 1024
 API_TOKEN = "sk-c56434e9222e4c00a83997246eda6c85"  # 请替换为你自己的 API Key
 
+from openai import OpenAI
+
+# for backward compatibility, you can still use `https://api.deepseek.com/v1` as `base_url`.
+dp_client = OpenAI(api_key="sk-46186299cb83418a9c65d99369d1cd18", base_url="https://api.deepseek.com")
+def ask_dp(system_prompt: str, user_text: str) -> str:
+    try:
+        completion = dp_client.chat.completions.create(
+            model="deepseek-v4-pro",
+            extra_body={"thinking": {"type": "disabled"}},
+            messages=[
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': user_text}
+                ],
+            max_tokens=1024,
+            temperature=0.7,
+            stream=False
+        )
+    except APIConnectionError as exc:
+        raise RuntimeError(
+            "无法连接 deepseek-v4-pro 接口。请检查网络连通性、代理配置，"
+            f"以及服务地址 {DASHSCOPE_BASE_URL} 是否可访问。"
+        ) from exc
+
+    return completion.choices[0].message.content
+
+
 _client: Optional[OpenAI] = None
 
 

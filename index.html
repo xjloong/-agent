@@ -3,175 +3,322 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>多模态客服智能体</title>
+    <title>多模态客服智能体评测端</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; }
-        .chat-container { width: 100%; max-width: 500px; background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: flex; flex-direction: column; height: 80vh; overflow: hidden; }
-        .header { background: #007bff; color: white; padding: 15px; text-align: center; font-weight: bold; font-size: 1.2em; }
-        .chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
-        .message { max-width: 80%; padding: 10px 15px; border-radius: 8px; line-height: 1.4; word-wrap: break-word; }
-        .user-msg { background: #007bff; color: white; align-self: flex-end; border-bottom-right-radius: 0; }
-        .bot-msg { background: #e9ecef; color: #333; align-self: flex-start; border-bottom-left-radius: 0; }
-        .bot-msg img { max-width: 100%; border-radius: 4px; margin-top: 5px; }
-        .input-area { padding: 15px; background: #fff; border-top: 1px solid #ddd; display: flex; flex-direction: column; gap: 10px; }
-        .controls { display: flex; gap: 10px; align-items: center; }
-        input[type="text"] { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 6px; outline: none; }
-        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; transition: background 0.2s; }
-        button:hover { background: #0056b3; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
-        .image-preview { display: flex; gap: 10px; overflow-x: auto; }
-        .image-preview img { height: 50px; border-radius: 4px; border: 1px solid #ddd; }
-        .pic-tag { color: #d9534f; font-weight: bold; font-size: 0.9em; background: #fdf2f2; padding: 2px 4px; border-radius: 4px; border: 1px solid #d9534f; }
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .typing-indicator span {
+            animation: blink 1.4s infinite both;
+            height: 6px; width: 6px; background: #3b82f6; border-radius: 50%; display: inline-block; margin: 0 2px;
+        }
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes blink { 0% { opacity: 0.2; transform: scale(0.8); } 20% { opacity: 1; transform: scale(1.2); } 100% { opacity: 0.2; transform: scale(0.8); } }
+        /* 避免长文本破坏布局 */
+        .msg-text { word-wrap: break-word; white-space: pre-wrap; }
     </style>
 </head>
-<body>
+<body class="bg-gray-50 h-screen flex flex-col justify-center items-center p-4">
 
-<div class="chat-container">
-    <div class="header">多模态智能客服</div>
-    <div class="chat-box" id="chatBox">
-        <div class="message bot-msg">您好！我是智能客服，请问有什么可以帮您？</div>
-    </div>
-    
-    <div class="input-area">
-        <div class="image-preview" id="imagePreview"></div>
-        <div class="controls">
-            <input type="file" id="imageInput" accept="image/png, image/jpeg, image/jpg, image/webp" multiple style="display: none;" onchange="handleImageSelect(event)">
-            <button onclick="document.getElementById('imageInput').click()" style="background: #28a745;">+ 图片</button>
-            <input type="text" id="questionInput" placeholder="输入您的问题..." onkeypress="if(event.key === 'Enter') sendMessage()">
-            <button id="sendBtn" onclick="sendMessage()">发送</button>
+    <!-- 主聊天界面窗口 -->
+    <div class="bg-white w-full max-w-3xl h-[85vh] rounded-2xl shadow-xl flex flex-col overflow-hidden border border-gray-100">
+        
+        <!-- 头部 -->
+        <div class="bg-blue-600 px-6 py-4 flex items-center justify-between shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center text-blue-600 font-bold text-xl shadow-sm">AI</div>
+                <div>
+                    <h1 class="text-white font-bold text-lg">多模态客服智能体</h1>
+                    <p class="text-blue-100 text-xs" id="session-display">当前会话: 全新会话</p>
+                </div>
+            </div>
+            <button onclick="resetSession()" class="text-white text-sm hover:bg-blue-700 px-3 py-1.5 rounded transition">
+                ↻ 清空会话
+            </button>
+        </div>
+
+        <!-- 聊天消息区 -->
+        <div id="chat-box" class="flex-1 overflow-y-auto p-6 space-y-6 bg-gray-50/50">
+            <!-- 欢迎语 -->
+            <div class="flex items-start gap-3">
+                <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0">AI</div>
+                <div class="bg-white p-4 rounded-2xl rounded-tl-sm shadow-sm border border-gray-100 text-gray-700 text-sm max-w-[85%] msg-text">您好！我是您的多模态专属客服。您可以直接向我提问，或者上传遇到问题的产品图片（最多3张）。</div>
+            </div>
+        </div>
+
+        <!-- 底部输入区 -->
+        <div class="bg-white border-t border-gray-100 p-4 shrink-0">
+            <!-- 图片预览区 -->
+            <div id="image-preview-container" class="flex gap-2 mb-2 hidden overflow-x-auto pb-2">
+                <!-- 动态插入预览图 -->
+            </div>
+
+            <div class="flex items-end gap-3">
+                <!-- 隐藏的图片选择器 -->
+                <input type="file" id="file-input" accept="image/png, image/jpeg, image/jpg, image/webp" multiple class="hidden" onchange="handleImageSelection(event)">
+                
+                <!-- 上传图片按钮 -->
+                <button onclick="document.getElementById('file-input').click()" class="p-3 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition shrink-0" title="上传图片 (最多3张, 仅限 PNG/JPG/WEBP)">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                </button>
+
+                <!-- 文本输入框 -->
+                <div class="flex-1 bg-gray-100 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-100 transition">
+                    <textarea id="msg-input" rows="1" class="w-full bg-transparent border-0 px-4 py-3 text-gray-700 text-sm focus:outline-none resize-none" placeholder="输入您的问题..." onkeydown="handleEnter(event)"></textarea>
+                </div>
+
+                <!-- 发送按钮 -->
+                <button onclick="sendMessage()" id="send-btn" class="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl shadow-md transition flex items-center justify-center shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                    </svg>
+                </button>
+            </div>
         </div>
     </div>
-</div>
 
-<script>
-    // 配置信息 (对齐赛题规范)
-    const API_URL = "https://a27f-115-156-187-79.ngrok-free.app/chat";
-    const API_TOKEN = "sk_customer_20260304";
-    
-    let currentSessionId = ""; // 用于维持多轮对话
-    let selectedImagesBase64 = []; // 存储Base64格式的图片
+    <script>
+        // ================= 配置与状态 =================
+        const API_URL = "http://localhost:8000/chat";
+        const API_TOKEN = "sk_customer_20260304"; // 对应你后端固定的 Token
+        
+        let currentSessionId = null; 
+        let selectedImagesBase64 = []; // 存放准备发送的 base64 字符串
 
-    const chatBox = document.getElementById('chatBox');
-    const questionInput = document.getElementById('questionInput');
-    const imagePreview = document.getElementById('imagePreview');
-    const sendBtn = document.getElementById('sendBtn');
-    const imageInput = document.getElementById('imageInput');
+        const chatBox = document.getElementById('chat-box');
+        const msgInput = document.getElementById('msg-input');
+        const imgPreviewContainer = document.getElementById('image-preview-container');
 
-    // 处理图片选择并转为 Base64
-    function handleImageSelect(event) {
-        const files = event.target.files;
-        if (selectedImagesBase64.length + files.length > 3) {
-            alert("最多只能上传3张图片！");
-            return;
-        }
+        // ================= 自动撑开输入框 =================
+        msgInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight < 120 ? this.scrollHeight : 120) + 'px';
+        });
 
-        for (let file of files) {
-            // 校验大小 <= 5MB
-            if (file.size > 5 * 1024 * 1024) {
-                alert(`图片 ${file.name} 超过 5MB 限制`);
-                continue;
+        // ================= 图片处理逻辑 =================
+        async function handleImageSelection(event) {
+            const files = Array.from(event.target.files);
+            
+            // 校验数量 (当前已有 + 新增不能超3张)
+            if (selectedImagesBase64.length + files.length > 3) {
+                alert("⚠️ 最多只能上传 3 张图片！");
+                event.target.value = '';
+                return;
             }
 
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                // e.target.result 自带 data:image/...;base64, 前缀，完美符合赛题要求
-                selectedImagesBase64.push(e.target.result);
-                
-                // 渲染预览图
-                const imgNode = document.createElement('img');
-                imgNode.src = e.target.result;
-                imagePreview.appendChild(imgNode);
+            for (let file of files) {
+                // 校验大小 (5MB)
+                if (file.size > 5 * 1024 * 1024) {
+                    alert(`⚠️ 图片 ${file.name} 超过5MB限制！`);
+                    continue;
+                }
+
+                try {
+                    const base64Str = await convertToBase64(file);
+                    selectedImagesBase64.push(base64Str);
+                    renderImagePreview(base64Str, selectedImagesBase64.length - 1);
+                } catch (e) {
+                    alert(`⚠️ 转换图片失败: ${e.message}`);
+                }
+            }
+            
+            imgPreviewContainer.classList.remove('hidden');
+            event.target.value = ''; // 清空选择器以便能重复选同一张图
+        }
+
+        // 文件转 Base64 (FileReader.readAsDataURL 自动带前缀)
+        function convertToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        // 渲染底部小图预览
+        function renderImagePreview(base64, index) {
+            const div = document.createElement('div');
+            div.className = "relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200 shrink-0 group";
+            div.innerHTML = `
+                <img src="${base64}" class="w-full h-full object-cover">
+                <div class="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center cursor-pointer transition" onclick="removeImage(${index})">
+                    <span class="text-white font-bold text-xs">✕</span>
+                </div>
+            `;
+            imgPreviewContainer.appendChild(div);
+        }
+
+        // 移除已选图片
+        function removeImage(index) {
+            selectedImagesBase64.splice(index, 1);
+            // 重新渲染预览区
+            imgPreviewContainer.innerHTML = '';
+            selectedImagesBase64.forEach((b64, i) => renderImagePreview(b64, i));
+            if (selectedImagesBase64.length === 0) {
+                imgPreviewContainer.classList.add('hidden');
+            }
+        }
+
+        // ================= 发送与通信逻辑 =================
+        function handleEnter(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        }
+
+        async function sendMessage() {
+            const text = msgInput.value.trim();
+            if (!text && selectedImagesBase64.length === 0) return;
+
+            // 1. 渲染用户消息
+            appendUserMessage(text, selectedImagesBase64);
+            
+            // 构建请求体 (严格符合接口定义)
+            const payload = {
+                question: text || "请解析图片内容",
+                images: selectedImagesBase64,
+                session_id: currentSessionId, // null 时后端会自动生成
+                stream: false
             };
-            reader.readAsDataURL(file);
-        }
-        imageInput.value = ""; // 清空 input 允许重复选择同名文件
-    }
 
-    // 追加消息到聊天框
-    function appendMessage(role, text, images = []) {
-        const msgDiv = document.createElement('div');
-        msgDiv.className = `message ${role === 'user' ? 'user-msg' : 'bot-msg'}`;
-        
-        // 格式化机器人的 <PIC> 占位符使其更美观
-        let formattedText = text;
-        if (role === 'bot') {
-            formattedText = text.replace(/<PIC>/g, '<span class="pic-tag"> 🖼️[附图说明] </span>');
-        }
-        
-        let htmlContent = `<div>${formattedText}</div>`;
-        
-        // 如果是用户发送的图片，展示出来
-        if (images.length > 0 && role === 'user') {
-            htmlContent += `<div style="margin-top: 8px;">`;
-            images.forEach(imgB64 => {
-                htmlContent += `<img src="${imgB64}" style="max-height: 100px; margin-right: 5px;">`;
-            });
-            htmlContent += `</div>`;
-        }
-        
-        msgDiv.innerHTML = htmlContent;
-        chatBox.appendChild(msgDiv);
-        chatBox.scrollTop = chatBox.scrollHeight;
-    }
+            // 2. 清理输入框和图片池
+            msgInput.value = '';
+            msgInput.style.height = 'auto';
+            selectedImagesBase64 = [];
+            imgPreviewContainer.innerHTML = '';
+            imgPreviewContainer.classList.add('hidden');
+            
+            // 3. 显示打字机 Loading
+            const loadingId = appendLoading();
+            scrollToBottom();
 
-    // 发送消息到后端
-    async function sendMessage() {
-        const question = questionInput.value.trim();
-        if (!question && selectedImagesBase64.length === 0) return;
+            // 4. 发送网络请求
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${API_TOKEN}` // 严格的 Bearer Token
+                    },
+                    body: JSON.stringify(payload)
+                });
 
-        // 1. 界面更新：显示用户输入
-        appendMessage('user', question, selectedImagesBase64);
-        
-        // 2. 准备 payload (严格遵守接口文档)
-        const payload = {
-            question: question,
-            images: selectedImagesBase64,
-            stream: false
-        };
-        // 只有当有了 session_id 才传，否则让后端生成新会话
-        if (currentSessionId) {
-            payload.session_id = currentSessionId;
-        }
+                const resData = await response.json();
+                removeElement(loadingId);
 
-        // 清空输入框和图片池
-        questionInput.value = '';
-        selectedImagesBase64 = [];
-        imagePreview.innerHTML = '';
-        
-        // 禁用发送按钮，显示 loading
-        sendBtn.disabled = true;
-        sendBtn.innerText = "思考中...";
+                // 处理 HTTP 错误态 (如后端返回的 400 校验异常)
+                if (!response.ok) {
+                    appendSystemMessage(`❌ 请求失败 (${response.status}): ${resData.detail || resData.msg || '未知错误'}`);
+                    return;
+                }
 
-        try {
-            // 3. 发起 Fetch 请求
-            const response = await fetch(API_URL, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${API_TOKEN}` // Token 认证
-                },
-                body: JSON.stringify(payload)
-            });
+                // 处理业务级报错
+                if (resData.code !== 0) {
+                    appendSystemMessage(`⚠️ 服务端提示: ${resData.msg}`);
+                }
 
-            const resData = await response.json();
+                // 5. 渲染 AI 回复
+                const reply = resData.data.answer;
+                const imgIds = resData.data.returned_images || [];
+                
+                // 维持 Session ID
+                if (resData.data.session_id) {
+                    currentSessionId = resData.data.session_id;
+                    document.getElementById('session-display').innerText = `当前会话: ${currentSessionId}`;
+                }
 
-            if (resData.code === 0) {
-                // 成功：渲染答案并保存 session_id
-                appendMessage('bot', resData.data.answer);
-                currentSessionId = resData.data.session_id; // 关键：保存会话ID实现多轮对话
-            } else {
-                appendMessage('bot', `⚠️ 发生错误: ${resData.msg}`);
+                appendAIMessage(reply, imgIds);
+
+            } catch (error) {
+                removeElement(loadingId);
+                appendSystemMessage(`❌ 网络请求异常: ${error.message} (请确保 FastAPI 已启动且允许 CORS)`);
             }
-
-        } catch (error) {
-            appendMessage('bot', `⚠️ 网络请求失败: ${error.message}。请检查后端是否已启动并配置跨域。`);
-        } finally {
-            // 恢复按钮状态
-            sendBtn.disabled = false;
-            sendBtn.innerText = "发送";
+            scrollToBottom();
         }
-    }
-</script>
 
+        // ================= UI 渲染工具 =================
+        function appendUserMessage(text, images) {
+            let imgHtml = '';
+            if (images && images.length > 0) {
+                imgHtml = `<div class="flex flex-wrap gap-2 mb-2">` + 
+                    images.map(img => `<img src="${img}" class="w-20 h-20 rounded-md object-cover border border-blue-200">`).join('') + 
+                    `</div>`;
+            }
+            
+            const html = `
+                <div class="flex items-start gap-3 flex-row-reverse">
+                    <div class="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0">我</div>
+                    <div class="bg-blue-600 text-white p-4 rounded-2xl rounded-tr-sm shadow-sm text-sm max-w-[85%] msg-text">${imgHtml}${text}</div>
+                </div>
+            `;
+            chatBox.insertAdjacentHTML('beforeend', html);
+        }
+
+        function appendAIMessage(text, imageIds) {
+            // 【核心渲染逻辑】：将大模型生成的 <PIC> 替换成带有返回数组中图片 ID 的漂亮小方块
+            let picCounter = 0;
+            let formattedText = text.replace(/<PIC>/g, () => {
+                const imgId = imageIds[picCounter] ? imageIds[picCounter] : '未知配图';
+                picCounter++;
+                return `<span class="inline-flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded border border-green-200 mx-1 text-xs font-semibold" title="引用的手册配图"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>${imgId}</span>`;
+            });
+
+            const html = `
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0">AI</div>
+                    <div class="bg-white p-4 rounded-2xl rounded-tl-sm shadow-sm border border-gray-100 text-gray-700 text-sm max-w-[85%] leading-relaxed msg-text">${formattedText}</div>
+                </div>
+            `;
+            chatBox.insertAdjacentHTML('beforeend', html);
+        }
+
+        function appendSystemMessage(text) {
+            const html = `
+                <div class="flex justify-center">
+                    <span class="bg-red-50 text-red-500 px-3 py-1 rounded-full text-xs font-medium border border-red-100">${text}</span>
+                </div>
+            `;
+            chatBox.insertAdjacentHTML('beforeend', html);
+        }
+
+        function appendLoading() {
+            const id = 'loading-' + Date.now();
+            const html = `
+                <div id="${id}" class="flex items-start gap-3">
+                    <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0">AI</div>
+                    <div class="bg-white p-4 rounded-2xl rounded-tl-sm shadow-sm border border-gray-100 text-gray-700 text-sm flex items-center h-[48px]">
+                        <div class="typing-indicator"><span></span><span></span><span></span></div>
+                    </div>
+                </div>
+            `;
+            chatBox.insertAdjacentHTML('beforeend', html);
+            return id;
+        }
+
+        function removeElement(id) {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        }
+
+        function scrollToBottom() {
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function resetSession() {
+            currentSessionId = null;
+            document.getElementById('session-display').innerText = "当前会话: 全新会话";
+            chatBox.innerHTML = `
+                <div class="flex justify-center mb-4"><span class="bg-gray-100 text-gray-500 px-3 py-1 rounded-full text-xs border border-gray-200">会话已清空，上下文已重置</span></div>
+            `;
+        }
+    </script>
 </body>
 </html>

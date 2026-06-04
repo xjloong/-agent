@@ -1,132 +1,169 @@
+from fastapi import FastAPI, Header, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from typing import List, Optional
 import time
 import uuid
-from typing import List, Optional
-from fastapi import FastAPI, Header, HTTPException, Depends
-from pydantic import BaseModel, Field
-import uvicorn
-from fastapi.middleware.cors import CORSMiddleware
-# 导入你写好的 RAG 核心流水线
-# 假设你的流水线代码文件名为 search_answer.py
-from search_answer import RAGPipeline, RAGContext
+import re
+import os
 
-# ==========================================
-# 1. 配置与全局初始化
-# ==========================================
-app = FastAPI(title="多模态客服智能体 API")
+# 导入你在 answer.py 中写好的核心处理逻辑
+from answer import generate_final_answer
 
+# 初始化 FastAPI 实例
+app = FastAPI(
+    title="多模态客服智能体 API",
+    description="适配客服比赛要求的标准 RESTful API 服务"
+)
+
+# 配置跨域资源共享 (CORS)，允许前端网页跨域调用本接口
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # 实际生产中请替换为具体的前端域名
+    allow_origins=["*"],  # 比赛测试阶段允许所有来源
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 赛题要求的统一 Token 认证 
-KAFU_API_TOKEN = "sk_customer_20260304" # 请根据实际情况修改或放置在环境变量中
+# ==========================================
+# 环境变量与配置选项
+# ==========================================
+# 从文档提取的默认测试 Token：sk_customer_20260304
+KAFU_API_TOKEN = os.getenv("KAFU_API_TOKEN", "sk_customer_20260304")
 
-# 全局初始化 RAG Pipeline，避免每次请求都重新加载文档名等
-pipeline = RAGPipeline()
+# 用于校验 Base64 图片格式的正则表达式（严格要求前缀格式和支持的后缀）
+IMAGE_PREFIX_PATTERN = re.compile(r'^data:image/(png|jpg|jpeg|webp);base64,')
+
 
 # ==========================================
-# 2. Pydantic 数据模型定义 (严格遵循接口定义说明)
+# 数据模型定义 (严格对齐比赛文档)
 # ==========================================
+
 class ChatRequest(BaseModel):
-    question: str = Field(..., min_length=1, description="核心输入：用户的客服问题字符串 ")
-    images: Optional[List[str]] = Field(default=[], description="Base64 格式图片列表，支持 0-3 张 ")
-    session_id: Optional[str] = Field(default=None, description="客服会话 ID ")
-    stream: Optional[bool] = Field(default=False, description="是否流式响应 ")
+    """请求体结构定义"""
+    question: str = Field(..., min_length=1, description="用户的客服问题字符串")
+    images: Optional[List[str]] = Field(default=[], description="Base64 格式图片列表，最多3张")
+    session_id: Optional[str] = Field(default=None, description="客服会话 ID，用于多轮对话")
+    stream: Optional[bool] = Field(default=False, description="是否流式响应，默认 FALSE")
 
 class ChatResponseData(BaseModel):
+    """响应体内的 data 结构"""
     answer: str
     session_id: str
     timestamp: int
-    # 额外补充：方便前端或评测脚本提取对应的 <PIC> 图片 ID
-    returned_images: List[str] = []
+    returned_images: List[str]  # 赛题要求：在数组中提供图片 ID
 
 class ChatResponse(BaseModel):
+    """完整响应体结构定义"""
     code: int = 0
     msg: str = "success"
     data: ChatResponseData
 
+
 # ==========================================
-# 3. 核心校验依赖
+# 依赖与校验逻辑
 # ==========================================
-def verify_authorization(authorization: str = Header(..., description="Bearer Token认证 ")):
-    """校验请求头中的 Authorization 字段 """
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid Authorization header format. Must start with 'Bearer '")
+
+async def verify_authorization(authorization: Optional[str] = Header(None)):
+    """
+    【认证规范校验】
+    强制校验请求头中是否携带 Authorization: Bearer {KAFU_API_TOKEN}
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401, 
+            detail="Unauthorized: Missing or invalid Bearer token format."
+        )
     
-    token = authorization.split("Bearer ")[1].strip()
+    # 提取并比对 Token
+    token = authorization.split(" ")[1]
     if token != KAFU_API_TOKEN:
-        raise HTTPException(status_code=403, detail="Forbidden: Invalid API Token")
+        raise HTTPException(
+            status_code=401, 
+            detail="Unauthorized: Invalid KAFU API Token."
+        )
+    
     return token
 
 def validate_images(images: List[str]):
-    """校验图片数量和大小规范 """
+    """
+    【多模态边界校验】
+    1. 图片数量不能超过 3 张
+    2. 图片必须严格符合 data:image/{png/jpg/jpeg/webp};base64,{编码内容} 格式
+    3. 单张图片不能超过 5MB
+    """
     if len(images) > 3:
-        raise HTTPException(status_code=400, detail="Images count cannot exceed 3.")
+        raise HTTPException(status_code=400, detail="Bad Request: 图片最多只支持上传 3 张。")
     
-    for idx, img_b64 in enumerate(images):
-        # 粗略校验 Base64 图片大小是否超过 5MB 
-        # Base64 编码后的体积大约是原图的 4/3，5MB ≈ 5 * 1024 * 1024 bytes
-        # 加上 data:image/... 前缀，粗略按体积计算
-        approx_size = len(img_b64) * 0.75
-        if approx_size > 5 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail=f"Image at index {idx} exceeds the 5MB size limit.")
+    for img in images:
+        # 1. 严格校验赛题要求的 Base64 前缀
+        if not IMAGE_PREFIX_PATTERN.match(img):
+            raise HTTPException(
+                status_code=400, 
+                detail="Bad Request: 图片格式不合法，必须以 data:image/{png/jpg/jpeg/webp};base64, 作为前缀。"
+            )
+
+        # 2. 简单估算 Base64 体积 (5MB 原图转 Base64 长度大约为 5 * 1024 * 1024 * 1.33 ≈ 6.99MB)
+        # 这里宽泛一点限制在 7.5 * 1024 * 1024 字符左右
+        if len(img) > 7864320:
+            raise HTTPException(status_code=400, detail="Bad Request: 单张图片大小不能超过 5MB。")
+
 
 # ==========================================
-# 4. 核心端点 /chat
+# 核心接口路由
 # ==========================================
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(request: ChatRequest, token: str = Depends(verify_authorization)):
     """
-    唯一客服交互入口，兼容文本与图片咨询 
-    仅仅支持 POST 请求 
+    核心多模态对话端点
     """
-    # 1. 校验图片合法性
-    if request.images:
-        validate_images(request.images)
-        
-    # 2. 会话管理：若不传入，系统自动生成新 ID 
-    current_session_id = request.session_id if request.session_id else f"kf_session_{uuid.uuid4().hex[:8]}"
-    
-    # 3. 组装载荷并调用你写好的 RAG 逻辑
-    payload = {
-        "question": request.question,
-        "images": request.images,
-        "session_id": current_session_id,
-        "stream": request.stream
-    }
-    
     try:
-        # 执行流水线，获取最终上下文状态
-        ctx = pipeline.run(payload)
-        
-        # 4. 构建标准响应体 
-        return ChatResponse(
-            code=0,
-            msg="success",
-            data=ChatResponseData(
-                answer=ctx.answer,  # 已经包含了 <PIC> 占位符的文本
-                session_id=current_session_id,
-                timestamp=int(time.time()), # 响应时间戳(秒) 
-                returned_images=ctx.returned_images # 包含关联的图片 ID 列表
-            )
-        )
-        
+        # 1. 校验请求中的图片约束 (数量、格式、大小)
+        validate_images(request.images)
+
+        # 2. 会话 ID 处理：如果前端没有传，则后端自动生成一个新的 ID 并返回
+        current_session_id = request.session_id if request.session_id else f"kf_session_{uuid.uuid4().hex[:8]}"
+
+        print(f"\n[API 接收请求] Session: {current_session_id} | 包含图片数: {len(request.images)}")
+        print(f"[API 接收问题] {request.question}")
+
+        # 3. 核心调用：将问题和图片传入你的 RAG 生成函数
+        # 注意：此处为无状态调用，如需实现真正的多轮记忆，可在 answer.py 中利用 current_session_id 维护历史
+        final_answer, extracted_image_ids = generate_final_answer(request.question, request.images)
+
+        # 4. 组装并返回标准响应 JSON
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {
+                "answer": final_answer,
+                "session_id": current_session_id,
+                "timestamp": int(time.time()),
+                "returned_images": extracted_image_ids
+            }
+        }
+
+    except HTTPException as he:
+        # 将我们主动抛出的 400/401 校验异常直接返回给前端
+        raise he
     except Exception as e:
-        # 容错处理：确保即使内部抛错，也能返回合规的 JSON 结构
-        return ChatResponse(
-            code=500,
-            msg=f"Internal Server Error: {str(e)}",
-            data=ChatResponseData(
-                answer="抱歉，系统处理您的请求时出现了内部异常。",
-                session_id=current_session_id,
-                timestamp=int(time.time())
-            )
-        )
+        import traceback
+        traceback.print_exc()
+        # 兜底容错：即使发生未捕获异常，也返回符合格式的 JSON，防止服务崩溃
+        return {
+            "code": 500,
+            "msg": f"Internal Server Error: {str(e)}",
+            "data": {
+                "answer": "非常抱歉，智能体在处理您的问题时遇到了内部错误，请稍后再试。",
+                "session_id": request.session_id or f"kf_session_{uuid.uuid4().hex[:8]}",
+                "timestamp": int(time.time()),
+                "returned_images": []
+            }
+        }
 
 if __name__ == "__main__":
-    # 本地启动服务，默认端口 8000
+    import uvicorn
+    # 启动服务器 (默认绑定 8000 端口，可通过 http://localhost:8000/docs 查看接口文档)
+    print("🚀 正在启动多模态客服智能体 API 服务...")
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
