@@ -33,10 +33,12 @@
                 <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center text-blue-600 font-bold text-xl shadow-sm">AI</div>
                 <div>
                     <h1 class="text-white font-bold text-lg">多模态客服智能体</h1>
+                    <!-- 动态显示当前 Session ID -->
                     <p class="text-blue-100 text-xs" id="session-display">当前会话: 全新会话</p>
                 </div>
             </div>
-            <button onclick="resetSession()" class="text-white text-sm hover:bg-blue-700 px-3 py-1.5 rounded transition">
+            <!-- 清空会话按钮，点击触发 resetSession() -->
+            <button onclick="resetSession()" class="text-white text-sm hover:bg-blue-700 px-3 py-1.5 rounded transition shadow-sm border border-blue-500">
                 ↻ 清空会话
             </button>
         </div>
@@ -85,15 +87,43 @@
 
     <script>
         // ================= 配置与状态 =================
-        const API_URL = "http://localhost:8000/chat";
-        const API_TOKEN = "sk_customer_20260304"; // 对应你后端固定的 Token
+        const API_URL = "https://257b-115-156-245-118.ngrok-free.app/chat"; // 确保此地址与你的 FastAPI 地址一致
+        const API_TOKEN = "sk_customer_20260304"; 
+        
+        // 【新增配置】：指定图片所在的本地文件夹路径。
+        // 你需要把存放所有手册图片的文件夹重命名为 "images"，并放在与这个 index.html 同一个目录下。
+        const IMAGE_BASE_URL = "./images/"; 
         
         let currentSessionId = null; 
-        let selectedImagesBase64 = []; // 存放准备发送的 base64 字符串
+        let selectedImagesBase64 = []; 
 
         const chatBox = document.getElementById('chat-box');
         const msgInput = document.getElementById('msg-input');
         const imgPreviewContainer = document.getElementById('image-preview-container');
+
+        // ================= 核心：重置会话逻辑 =================
+        function resetSession() {
+            // 1. 将当前 session_id 彻底置空
+            currentSessionId = null;
+            
+            // 2. 更新右上角的 UI 显示
+            document.getElementById('session-display').innerText = "当前会话: 全新会话";
+            
+            // 3. 清空聊天面板，并给出清晰的重置提示
+            chatBox.innerHTML = `
+                <div class="flex items-start gap-3 mt-4">
+                    <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0">AI</div>
+                    <div class="bg-white p-4 rounded-2xl rounded-tl-sm shadow-sm border border-gray-100 text-green-700 text-sm max-w-[85%] msg-text">✅ 会话已清空，之前的短期记忆已重置。我们开启了一段全新的对话，请问有什么可以帮您？</div>
+                </div>
+            `;
+            
+            // 清理遗留的输入或图片
+            msgInput.value = '';
+            msgInput.style.height = 'auto';
+            selectedImagesBase64 = [];
+            imgPreviewContainer.innerHTML = '';
+            imgPreviewContainer.classList.add('hidden');
+        }
 
         // ================= 自动撑开输入框 =================
         msgInput.addEventListener('input', function() {
@@ -105,7 +135,6 @@
         async function handleImageSelection(event) {
             const files = Array.from(event.target.files);
             
-            // 校验数量 (当前已有 + 新增不能超3张)
             if (selectedImagesBase64.length + files.length > 3) {
                 alert("⚠️ 最多只能上传 3 张图片！");
                 event.target.value = '';
@@ -113,7 +142,6 @@
             }
 
             for (let file of files) {
-                // 校验大小 (5MB)
                 if (file.size > 5 * 1024 * 1024) {
                     alert(`⚠️ 图片 ${file.name} 超过5MB限制！`);
                     continue;
@@ -129,10 +157,9 @@
             }
             
             imgPreviewContainer.classList.remove('hidden');
-            event.target.value = ''; // 清空选择器以便能重复选同一张图
+            event.target.value = ''; 
         }
 
-        // 文件转 Base64 (FileReader.readAsDataURL 自动带前缀)
         function convertToBase64(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -142,7 +169,6 @@
             });
         }
 
-        // 渲染底部小图预览
         function renderImagePreview(base64, index) {
             const div = document.createElement('div');
             div.className = "relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200 shrink-0 group";
@@ -155,10 +181,8 @@
             imgPreviewContainer.appendChild(div);
         }
 
-        // 移除已选图片
         function removeImage(index) {
             selectedImagesBase64.splice(index, 1);
-            // 重新渲染预览区
             imgPreviewContainer.innerHTML = '';
             selectedImagesBase64.forEach((b64, i) => renderImagePreview(b64, i));
             if (selectedImagesBase64.length === 0) {
@@ -181,11 +205,11 @@
             // 1. 渲染用户消息
             appendUserMessage(text, selectedImagesBase64);
             
-            // 构建请求体 (严格符合接口定义)
+            // 构建请求体 (如果 currentSessionId 为 null，后端将视为新会话并自动生成)
             const payload = {
                 question: text || "请解析图片内容",
                 images: selectedImagesBase64,
-                session_id: currentSessionId, // null 时后端会自动生成
+                session_id: currentSessionId, 
                 stream: false
             };
 
@@ -206,7 +230,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${API_TOKEN}` // 严格的 Bearer Token
+                        'Authorization': `Bearer ${API_TOKEN}`
                     },
                     body: JSON.stringify(payload)
                 });
@@ -214,13 +238,11 @@
                 const resData = await response.json();
                 removeElement(loadingId);
 
-                // 处理 HTTP 错误态 (如后端返回的 400 校验异常)
                 if (!response.ok) {
                     appendSystemMessage(`❌ 请求失败 (${response.status}): ${resData.detail || resData.msg || '未知错误'}`);
                     return;
                 }
 
-                // 处理业务级报错
                 if (resData.code !== 0) {
                     appendSystemMessage(`⚠️ 服务端提示: ${resData.msg}`);
                 }
@@ -229,7 +251,7 @@
                 const reply = resData.data.answer;
                 const imgIds = resData.data.returned_images || [];
                 
-                // 维持 Session ID
+                // 【核心】：接收后端返回的 session_id，后续问题都会带上它，实现短期记忆
                 if (resData.data.session_id) {
                     currentSessionId = resData.data.session_id;
                     document.getElementById('session-display').innerText = `当前会话: ${currentSessionId}`;
@@ -263,12 +285,32 @@
         }
 
         function appendAIMessage(text, imageIds) {
-            // 【核心渲染逻辑】：将大模型生成的 <PIC> 替换成带有返回数组中图片 ID 的漂亮小方块
             let picCounter = 0;
-            let formattedText = text.replace(/<PIC>/g, () => {
-                const imgId = imageIds[picCounter] ? imageIds[picCounter] : '未知配图';
+            
+            // 【核心修复】：使用 /\s*<PIC>\s*/g 正则表达式
+            // 这样能把大模型输出 <PIC> 时附带的换行符(\n)一起清理掉，防止出现巨大的空白间隙
+            let formattedText = text.replace(/\s*<PIC>\s*/g, () => {
+                const imgId = imageIds[picCounter] ? imageIds[picCounter] : null;
                 picCounter++;
-                return `<span class="inline-flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded border border-green-200 mx-1 text-xs font-semibold" title="引用的手册配图"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>${imgId}</span>`;
+                
+                if (imgId) {
+                    // 【样式优化】：缩小上下边距为 my-3，减小文字和图片的距离 mb-1
+                    return `
+                        <div class="my-3 max-w-sm w-full">
+                            <div class="flex items-center gap-1 text-xs text-gray-400 mb-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                引用配图: ${imgId}
+                            </div>
+                            <img src="${IMAGE_BASE_URL}${imgId}.png" 
+                                 onerror="this.onerror=null; this.src='${IMAGE_BASE_URL}${imgId}.jpg';" 
+                                 alt="${imgId}" 
+                                 class="w-full h-auto rounded-lg shadow-sm border border-gray-200 cursor-zoom-in hover:shadow-md transition"
+                                 onclick="window.open(this.src)"
+                                 title="点击查看大图">
+                        </div>`;
+                } else {
+                    return `<span class="inline-flex items-center gap-1 bg-red-50 text-red-500 px-2 py-1 rounded border border-red-200 mx-1 text-xs">⚠️ 图片数据丢失</span>`;
+                }
             });
 
             const html = `
@@ -310,14 +352,6 @@
 
         function scrollToBottom() {
             chatBox.scrollTop = chatBox.scrollHeight;
-        }
-
-        function resetSession() {
-            currentSessionId = null;
-            document.getElementById('session-display').innerText = "当前会话: 全新会话";
-            chatBox.innerHTML = `
-                <div class="flex justify-center mb-4"><span class="bg-gray-100 text-gray-500 px-3 py-1 rounded-full text-xs border border-gray-200">会话已清空，上下文已重置</span></div>
-            `;
         }
     </script>
 </body>

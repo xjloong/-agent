@@ -163,7 +163,7 @@ def process_folder_to_milvus(folder_path: str):
             print(f"处理文件 {file_name} 时发生错误: {e}")
 
     # ================= 新增逻辑：保存到 JSON =================
-    json_path = "doc_names.json"
+    json_path = "code/doc_names.json"
     try:
         with open(json_path, "w", encoding="utf-8") as f:
             # 将 set 转换为 list 保存，ensure_ascii=False 保证中文正常显示

@@ -130,7 +130,7 @@ async def chat_endpoint(request: ChatRequest, token: str = Depends(verify_author
 
         # 3. 核心调用：将问题和图片传入你的 RAG 生成函数
         # 注意：此处为无状态调用，如需实现真正的多轮记忆，可在 answer.py 中利用 current_session_id 维护历史
-        final_answer, extracted_image_ids = generate_final_answer(request.question, request.images)
+        final_answer, extracted_image_ids = generate_final_answer(request.question, request.images, current_session_id)
 
         # 4. 组装并返回标准响应 JSON
         return {

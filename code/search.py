@@ -23,7 +23,8 @@ def route_and_refine(question:str):
     raw_response = ask_dp(system_prompt=route_and_refine_prompt, user_text=question)
     return raw_response
 
-def search_to_query(question,top_n=3):
+
+def search_to_query(question,top_n=5):
     json_str = route_and_refine(question)
     result = json.loads(json_str)
     answer_val = result.get("answer")
