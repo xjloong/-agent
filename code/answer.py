@@ -1,6 +1,7 @@
 import json
 import re
-from typing import List, Tuple
+import time
+from typing import List, Tuple, Generator, Dict, Any
 from model_api import ask_images, ask_dp
 from search import search_to_query
 from prompt import route_and_refine_prompt, qa_system_prompt
@@ -106,6 +107,88 @@ def generate_final_answer(question: str, images: List[str] = None, session_id: s
     ])
 
     return final_answer, returned_images
+
+
+def generate_with_progress(question: str, images: List[str] = None, session_id: str = "default_session") -> Generator[Dict[str, Any], None, None]:
+    """
+    SSE 进度流式生成器：在每个处理步骤 yield 进度事件，最终 yield 完整结果。
+    与 generate_final_answer 共享相同的核心逻辑。
+    """
+    if images is None:
+        images = []
+
+    # ====== Step 0: 加载短期记忆 ======
+    history_obj = get_session_history(session_id)
+    history_messages = history_obj.messages
+
+    history_str = ""
+    if history_messages:
+        history_str = "\n【历史对话记录】:\n"
+        for msg in history_messages[-8:]:
+            role = "用户" if isinstance(msg, HumanMessage) else "客服"
+            history_str += f"{role}: {msg.content}\n"
+        yield {"type": "step", "step": "memory", "label": "正在加载历史对话..."}
+
+    # ====== Step 1: 图文融合 ======
+    if len(images) > 0:
+        yield {"type": "step", "step": "vision", "label": "正在解析图片信息..."}
+        processed_question = ask_images(images, question)
+    else:
+        processed_question = question
+
+    # ====== Step 2: 意图路由 + 检索 ======
+    yield {"type": "step", "step": "routing", "label": "正在分析问题意图..."}
+    context_aware_question = f"{history_str}\n【当前问题】:{processed_question}" if history_str else processed_question
+    ifanswer, search_result = search_to_query(context_aware_question)
+
+    returned_images = []
+
+    # ====== Step 3: 生成最终答案 ======
+    if ifanswer:
+        # 路由判定直接回答，跳过检索
+        final_answer = search_result
+    else:
+        yield {"type": "step", "step": "searching", "label": "正在检索产品手册..."}
+
+        context_texts = []
+        for item in search_result:
+            content = item.get("content", "")
+            img_list = item.get("image", [])
+
+            if img_list:
+                for img_id in img_list:
+                    content = content.replace("<PIC>", f"<PIC:{img_id}>", 1)
+
+            content = content.replace("<PIC>", "")
+            context_texts.append(content)
+
+        context_str = "\n---\n".join(context_texts)
+        user_input_prompt = f"{history_str}\n【参考手册内容】:\n{context_str}\n\n【当前问题】:\n{processed_question}"
+
+        yield {"type": "step", "step": "generating", "label": "正在生成回答..."}
+        raw_answer = ask_dp(system_prompt=qa_system_prompt, user_text=user_input_prompt)
+
+        extracted_ids = re.findall(r"<PIC:\s*(.*?)\s*>", raw_answer)
+        returned_images = extracted_ids
+        final_answer = re.sub(r"<PIC:\s*.*?\s*>", "<PIC>", raw_answer)
+
+    # ====== Step 4: 更新短期记忆 ======
+    history_obj.add_messages([
+        HumanMessage(content=processed_question),
+        AIMessage(content=final_answer)
+    ])
+
+    # ====== 最终结果 ======
+    yield {
+        "type": "result",
+        "data": {
+            "answer": final_answer,
+            "session_id": session_id,
+            "timestamp": int(time.time()),
+            "returned_images": returned_images
+        }
+    }
+
 
 if __name__ == "__main__":
     # 测试记忆功能

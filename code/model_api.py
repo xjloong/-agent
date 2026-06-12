@@ -154,5 +154,5 @@ def ask_images(images: List[str], question: str) -> str:
 
 if __name__ == "__main__":
     # print(compute_embedding("你好"))
-    # print(ask_qwen("回答助手","你是谁？"))
-    print(text_rerank("如何更换电池？", ["更换电池的方法是...", "这个问题没有提到电池", "请按照以下步骤更换电池..."], top_n=2))
+    print(ask_qwen("回答助手","你是谁？"))
+    # print(text_rerank("如何更换电池？", ["更换电池的方法是...", "这个问题没有提到电池", "请按照以下步骤更换电池..."], top_n=2))

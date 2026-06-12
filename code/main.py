@@ -1,14 +1,16 @@
 from fastapi import FastAPI, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import time
 import uuid
 import re
 import os
+import json
 
 # 导入你在 answer.py 中写好的核心处理逻辑
-from answer import generate_final_answer
+from answer import generate_final_answer, generate_with_progress
 
 # 初始化 FastAPI 实例
 app = FastAPI(
@@ -129,7 +131,31 @@ async def chat_endpoint(request: ChatRequest, token: str = Depends(verify_author
         print(f"[API 接收问题] {request.question}")
 
         # 3. 核心调用：将问题和图片传入你的 RAG 生成函数
-        # 注意：此处为无状态调用，如需实现真正的多轮记忆，可在 answer.py 中利用 current_session_id 维护历史
+        if request.stream:
+            # ====== SSE 流式路径 ======
+            async def sse_event_stream():
+                try:
+                    for event in generate_with_progress(request.question, request.images, current_session_id):
+                        event_type = event.get("type", "message")
+                        payload = event.get("data", event)
+                        yield f"event: {event_type}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                except Exception as e:
+                    import traceback
+                    traceback.print_exc()
+                    error_payload = json.dumps({"msg": f"处理请求时发生错误: {str(e)}"}, ensure_ascii=False)
+                    yield f"event: error\ndata: {error_payload}\n\n"
+
+            return StreamingResponse(
+                sse_event_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                }
+            )
+
+        # ====== 同步路径（原有逻辑不变） ======
         final_answer, extracted_image_ids = generate_final_answer(request.question, request.images, current_session_id)
 
         # 4. 组装并返回标准响应 JSON

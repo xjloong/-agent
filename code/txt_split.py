@@ -25,7 +25,7 @@ def process_manual_to_chunks(folder_path, file_name, chunk_size=512):
     # ================= 修复核心 =================
     # 查找所有 "\"，如果它后面跟的不是合法的 JSON 转义字符 (如 ", \, /, b, f, n, r, t, u)
     # 则将这个 "\" 替换为 "\\" (即双斜杠，将其作为普通文本保留)
-    json_str = re.sub(r'\\([^"\\/bfnrtu])', r'\\\\\1', json_str)
+    json_str = re.sub(r'(?<!\\)\\([^"\\/bfnrtu])', r'\\\\\1', json_str)
     # ==========================================
     
     # 2. 解析 JSON 数据
@@ -79,7 +79,14 @@ def process_manual_to_chunks(folder_path, file_name, chunk_size=512):
 
 if __name__ == "__main__":
     # 使用示例
-    folder = r"D:\Code\agent_desgin\data\KownledgeBase\手册"
+    folder = r"/home/xjl/workspace/code/-agent/data/KownledgeBase/手册"
     file = "洗碗机手册.txt"
+
+    en_folder = r"/home/xjl/workspace/code/-agent/data/KownledgeBase/English"
+    en_file = "Boat_Manual.txt"
+
     result = process_manual_to_chunks(folder, file)
     pp(result)
+    en_result = process_manual_to_chunks(en_folder, en_file)
+    pp(en_result)
+

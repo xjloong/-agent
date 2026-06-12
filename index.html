@@ -18,6 +18,15 @@
         .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
         .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
         @keyframes blink { 0% { opacity: 0.2; transform: scale(0.8); } 20% { opacity: 1; transform: scale(1.2); } 100% { opacity: 0.2; transform: scale(0.8); } }
+        /* 进度步骤指示器 */
+        .progress-step { transition: all 0.3s ease; }
+        .progress-step.pending .step-dot { background: #d1d5db; }
+        .progress-step.pending .step-label { color: #9ca3af; }
+        .progress-step.active .step-dot { background: #3b82f6; box-shadow: 0 0 0 4px rgba(59,130,246,0.25); animation: pulse-dot 1.2s ease-in-out infinite; }
+        .progress-step.active .step-label { color: #1e40af; font-weight: 600; }
+        .progress-step.done .step-dot { background: #22c55e; }
+        .progress-step.done .step-label { color: #166534; }
+        @keyframes pulse-dot { 0%, 100% { box-shadow: 0 0 0 4px rgba(59,130,246,0.25); } 50% { box-shadow: 0 0 0 8px rgba(59,130,246,0.08); } }
         /* 避免长文本破坏布局 */
         .msg-text { word-wrap: break-word; white-space: pre-wrap; }
     </style>
@@ -87,15 +96,33 @@
 
     <script>
         // ================= 配置与状态 =================
-        const API_URL = "https://257b-115-156-245-118.ngrok-free.app/chat"; // 确保此地址与你的 FastAPI 地址一致
+        const API_URL = "https://f807-115-156-245-118.ngrok-free.app/chat"; // 确保此地址与你的 FastAPI 地址一致
         const API_TOKEN = "sk_customer_20260304"; 
         
         // 【新增配置】：指定图片所在的本地文件夹路径。
         // 你需要把存放所有手册图片的文件夹重命名为 "images"，并放在与这个 index.html 同一个目录下。
         const IMAGE_BASE_URL = "./images/"; 
         
-        let currentSessionId = null; 
-        let selectedImagesBase64 = []; 
+        let currentSessionId = null;
+        let selectedImagesBase64 = [];
+
+        // ====== 进度步骤配置 ======
+        const STEP_LABELS = {
+            memory:      "正在加载历史对话...",
+            vision:      "正在解析图片信息...",
+            routing:     "正在分析问题意图...",
+            searching:   "正在检索产品手册...",
+            generating:  "正在生成回答..."
+        };
+        // 标准步骤顺序（动态构建，取决于是否有图片）
+        function getStepSequence(hasImages) {
+            const steps = [];
+            steps.push("routing");
+            steps.push("searching");
+            steps.push("generating");
+            if (hasImages) steps.unshift("vision");
+            return steps;
+        }
 
         const chatBox = document.getElementById('chat-box');
         const msgInput = document.getElementById('msg-input');
@@ -190,6 +217,55 @@
             }
         }
 
+        // ================= 进度指示器 =================
+        function appendProgressWidget(hasImages) {
+            const id = 'progress-' + Date.now();
+            const steps = getStepSequence(hasImages);
+
+            let stepsHtml = steps.map((key, i) => {
+                const label = STEP_LABELS[key] || key;
+                const cls = i === 0 ? 'active' : 'pending';
+                return `
+                    <div class="progress-step ${cls}" data-step="${key}">
+                        <div class="flex items-center gap-2 py-1">
+                            <span class="step-dot w-2.5 h-2.5 rounded-full shrink-0"></span>
+                            <span class="step-label text-xs">${label}</span>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            const html = `
+                <div id="${id}" class="flex items-start gap-3">
+                    <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0">AI</div>
+                    <div class="bg-white p-4 rounded-2xl rounded-tl-sm shadow-sm border border-gray-100 w-64">
+                        ${stepsHtml}
+                    </div>
+                </div>`;
+            chatBox.insertAdjacentHTML('beforeend', html);
+            return id;
+        }
+
+        function updateProgressWidget(widgetId, activeStepKey) {
+            const widget = document.getElementById(widgetId);
+            if (!widget) return;
+            const steps = widget.querySelectorAll('.progress-step');
+            let found = false;
+            steps.forEach(el => {
+                const key = el.dataset.step;
+                if (key === activeStepKey) {
+                    el.className = 'progress-step active';
+                    found = true;
+                } else if (!found) {
+                    el.className = 'progress-step done';
+                }
+            });
+        }
+
+        function removeProgressWidget(widgetId) {
+            const el = document.getElementById(widgetId);
+            if (el) el.remove();
+        }
+
         // ================= 发送与通信逻辑 =================
         function handleEnter(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -204,27 +280,27 @@
 
             // 1. 渲染用户消息
             appendUserMessage(text, selectedImagesBase64);
-            
-            // 构建请求体 (如果 currentSessionId 为 null，后端将视为新会话并自动生成)
+
             const payload = {
                 question: text || "请解析图片内容",
                 images: selectedImagesBase64,
-                session_id: currentSessionId, 
-                stream: false
+                session_id: currentSessionId,
+                stream: true   // 默认使用 SSE 流式进度
             };
 
             // 2. 清理输入框和图片池
             msgInput.value = '';
             msgInput.style.height = 'auto';
+            const hasImages = selectedImagesBase64.length > 0;
             selectedImagesBase64 = [];
             imgPreviewContainer.innerHTML = '';
             imgPreviewContainer.classList.add('hidden');
-            
-            // 3. 显示打字机 Loading
-            const loadingId = appendLoading();
+
+            // 3. 显示进度指示器
+            const progressId = appendProgressWidget(hasImages);
             scrollToBottom();
 
-            // 4. 发送网络请求
+            // 4. SSE 流式请求
             try {
                 const response = await fetch(API_URL, {
                     method: 'POST',
@@ -235,32 +311,85 @@
                     body: JSON.stringify(payload)
                 });
 
-                const resData = await response.json();
-                removeElement(loadingId);
-
                 if (!response.ok) {
-                    appendSystemMessage(`❌ 请求失败 (${response.status}): ${resData.detail || resData.msg || '未知错误'}`);
+                    removeProgressWidget(progressId);
+                    const errData = await response.json().catch(() => ({}));
+                    appendSystemMessage(`❌ 请求失败 (${response.status}): ${errData.detail || errData.msg || '未知错误'}`);
+                    scrollToBottom();
                     return;
                 }
 
-                if (resData.code !== 0) {
-                    appendSystemMessage(`⚠️ 服务端提示: ${resData.msg}`);
-                }
+                // 检查是否返回了 SSE 流（text/event-stream）
+                const contentType = response.headers.get('content-type') || '';
+                if (contentType.includes('text/event-stream')) {
+                    // ====== SSE 流式处理 ======
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+ let buffer = '';
 
-                // 5. 渲染 AI 回复
-                const reply = resData.data.answer;
-                const imgIds = resData.data.returned_images || [];
-                
-                // 【核心】：接收后端返回的 session_id，后续问题都会带上它，实现短期记忆
-                if (resData.data.session_id) {
-                    currentSessionId = resData.data.session_id;
-                    document.getElementById('session-display').innerText = `当前会话: ${currentSessionId}`;
-                }
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
 
-                appendAIMessage(reply, imgIds);
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop() || ''; // 保留不完整的行
+
+                        let eventType = '';
+                        let eventData = '';
+
+                        for (const line of lines) {
+                            if (line.startsWith('event: ')) {
+                                eventType = line.slice(7).trim();
+                            } else if (line.startsWith('data: ')) {
+                                eventData = line.slice(6);
+                            } else if (line === '' && eventType) {
+                                // 一个完整事件结束
+                                try {
+                                    const data = JSON.parse(eventData);
+                                    if (eventType === 'step') {
+                                        updateProgressWidget(progressId, data.step);
+                                    } else if (eventType === 'result') {
+                                        removeProgressWidget(progressId);
+                                        if (data.session_id) {
+                                            currentSessionId = data.session_id;
+                                            document.getElementById('session-display').innerText = `当前会话: ${currentSessionId}`;
+                                        }
+                                        appendAIMessage(data.answer, data.returned_images || []);
+                                    } else if (eventType === 'error') {
+                                        removeProgressWidget(progressId);
+                                        appendSystemMessage(`⚠️ ${data.msg || '服务端处理异常'}`);
+                                    }
+                                } catch (e) {
+                                    console.warn('SSE parse error:', e);
+                                }
+                                eventType = '';
+                                eventData = '';
+                            }
+                        }
+                    }
+                } else {
+                    // ====== 非流式响应（降级路径） ======
+                    removeProgressWidget(progressId);
+                    const resData = await response.json();
+
+                    if (resData.code !== 0) {
+                        appendSystemMessage(`⚠️ 服务端提示: ${resData.msg}`);
+                    }
+
+                    const reply = resData.data.answer;
+                    const imgIds = resData.data.returned_images || [];
+
+                    if (resData.data.session_id) {
+                        currentSessionId = resData.data.session_id;
+                        document.getElementById('session-display').innerText = `当前会话: ${currentSessionId}`;
+                    }
+
+                    appendAIMessage(reply, imgIds);
+                }
 
             } catch (error) {
-                removeElement(loadingId);
+                removeProgressWidget(progressId);
                 appendSystemMessage(`❌ 网络请求异常: ${error.message} (请确保 FastAPI 已启动且允许 CORS)`);
             }
             scrollToBottom();

@@ -65,9 +65,12 @@ def build_milvus_library(chunks: List[Dict], drop_existing: bool = False):
         index_params = client.prepare_index_params()
         index_params.add_index(
             field_name="vector",
-            index_type="HNSW",  # 或者使用 HNSW 提高速度
-            metric_type="COSINE",   # 推荐使用余弦相似度
-            params={"nlist": 128}
+            index_type="HNSW",      # 保持使用高性能的 HNSW 索引
+            metric_type="COSINE",   # 余弦相似度
+            params={
+                "M": 16,              # 每个节点的最大连接数（推荐范围 4-64）
+                "efConstruction": 128 # 建索引时的搜索范围（推荐范围 8-512）
+            }
         )
 
         # 创建集合
@@ -76,7 +79,6 @@ def build_milvus_library(chunks: List[Dict], drop_existing: bool = False):
             schema=schema,
             index_params=index_params
         )
-        print(f"成功创建新集合: {COLLECTION_NAME}")
 
     # 4. 批量向量化并准备插入数据
     data_to_insert = []
@@ -175,16 +177,16 @@ def process_folder_to_milvus(folder_path: str):
 
 if __name__ == "__main__":
     # 示例：从文本文件提取 chunks 并构建 Milvus 库
-    folder = r"data\KownledgeBase\手册"
-    file = "健身追踪器手册.txt"
-    
+    folder = r"data/KownledgeBase/手册"
+
+
     # print("正在提取文本块...")
     # chunks = process_manual_to_chunks(folder, file)
     
     # print("正在构建 Milvus 向量库...")
     # build_milvus_library(chunks, drop_existing=True)
-
   
     print("开始执行增量建库任务...")
+    # process_folder_to_milvus(folder)
     process_folder_to_milvus(folder)
     print("所有任务处理完毕。")
