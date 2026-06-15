@@ -100,6 +100,44 @@ def compute_embedding(text: str) -> List[float]:
 
     return completion.data[0].embedding
 
+
+def compute_embedding_batch(texts: List[str]) -> List[List[float]]:
+    """
+    批量计算文本向量，大幅减少 API 调用次数。
+
+    DashScope text-embedding-v4 支持一次传入多条文本，
+    这里按每批最多 25 条拆分，保证兼容性同时减少请求量。
+
+    Args:
+        texts: 待向量化的文本列表
+
+    Returns:
+        与输入顺序一致的向量列表
+    """
+    embeddings: List[List[float]] = []
+    batch_size = 25
+    total = len(texts)
+
+    for i in range(0, total, batch_size):
+        batch = texts[i:i + batch_size]
+        try:
+            completion = get_client().embeddings.create(
+                model=EMBED_MODEL,
+                input=batch,
+                dimensions=EMBED_DIM,
+                encoding_format="float",
+            )
+            # 结果按输入顺序返回
+            embeddings.extend([item.embedding for item in completion.data])
+            print(f"  [Embedding] 已处理 {min(i + batch_size, total)}/{total}")
+        except APIConnectionError as exc:
+            raise RuntimeError(
+                "无法连接 text-embedding-v4 接口。请检查网络连通性、代理配置，"
+                f"以及服务地址 {DASHSCOPE_BASE_URL} 是否可访问。"
+            ) from exc
+
+    return embeddings
+
 def ask_qwen(system_prompt: str, user_text: str) -> str:
     try:
         completion = get_client().chat.completions.create(

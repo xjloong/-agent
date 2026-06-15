@@ -12,7 +12,7 @@ from pymilvus import (
     AnnSearchRequest,
     RRFRanker,
 )
-from model_api import compute_embedding
+from model_api import compute_embedding_batch
 from txt_split import process_manual_to_chunks
 
 
@@ -82,12 +82,13 @@ def build_milvus_library(chunks: List[Dict], drop_existing: bool = False):
 
     # 4. 批量向量化并准备插入数据
     data_to_insert = []
-    print(f"正在处理 {len(chunks)} 条数据并计算向量...")
+    print(f"正在处理 {len(chunks)} 条数据并计算向量（批量模式，每批最多 25 条）...")
 
-    for chunk in chunks:
-        # 调用你已有的函数计算向量
-        embedding = compute_embedding(chunk["content"])
-        
+    # 收集所有文本，一次性批量计算向量，大幅减少 API 调用次数
+    texts = [chunk["content"] for chunk in chunks]
+    embeddings = compute_embedding_batch(texts)
+
+    for chunk, embedding in zip(chunks, embeddings):
         data_to_insert.append({
             "doc_name": chunk["doc_name"],
             "content": chunk["content"],
