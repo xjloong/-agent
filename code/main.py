@@ -158,6 +158,9 @@ async def chat_endpoint(request: ChatRequest, token: str = Depends(verify_author
         # ====== 同步路径（原有逻辑不变） ======
         final_answer, extracted_image_ids = generate_final_answer(request.question, request.images, current_session_id)
 
+        print(f"[API 生成回答] {final_answer}")
+        print(f"[API 返回图片 ID 列表] {extracted_image_ids}")
+
         # 4. 组装并返回标准响应 JSON
         return {
             "code": 0,
