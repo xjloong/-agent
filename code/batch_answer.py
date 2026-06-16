@@ -14,10 +14,13 @@
     - 通过输出文件（.csv）记录已写入的 id，进度文件（.progress）记录最后处理位置
     - 处理完全完成后自动清理进度文件
 
-输出格式（三列：id, ret, 图片名称列表）：
+输出格式（两列，与 submission_example.csv 一致）：
     id,ret
-    1,回答文本 <PIC>更多内容,["imgname1","imgname2"]
+    1,回答文本 <PIC>更多内容
     2,回答文本
+
+注意：回答中的换行符会在写入前自动去除，确保每条记录占一行。
+图片信息已通过 <PIC> 标记嵌入在回答文本中。
 """
 
 import csv
@@ -90,10 +93,11 @@ def write_submission_csv(
     append: bool = False
 ):
     """
-    写入提交文件（CSV 格式：id,ret,图片列表）。
+    写入提交文件（CSV 格式：id,ret，与 submission_example.csv 一致）。
 
     results 中每条为 (id, answer_text, image_names)。
-    图片名称列表以 Python 列表字面量形式写入第三列（如 ["img1","img2"]）。
+    回答中的换行符会被去除，确保每条记录仅占一行。
+    图片信息已通过 <PIC> 标记嵌入在回答文本中，无需额外列。
 
     如果已有文件且 append=True，则合并（已存在的 id 保留原有结果，新增的追加）。
     """
@@ -118,14 +122,10 @@ def write_submission_csv(
         for qid, answer, images in results:
             if qid in already_written:
                 continue  # 已存在则跳过（保护已有结果）
-            # 如果回答含逗号或引号，csv.writer 自动加引号包裹
-            ret = answer
-            if images:
-                # 构造图片列表字符串：["name1","name2"]
-                images_str = "[" + ",".join(f'"{img}"' for img in images) + "]"
-                writer.writerow([qid, ret, images_str])
-            else:
-                writer.writerow([qid, ret])
+            # 去除回答中的换行符，确保每行只占一条 CSV 记录（与 submission_example.csv 格式一致）
+            # csv.writer 遇到含逗号/引号字段会自动加引号包裹
+            ret = answer.replace('\n', '').replace('\r', '')
+            writer.writerow([qid, ret])
 
     total = len(results)
     skipped = len([r for r in results if r[0] in already_written]) if append else 0
@@ -233,6 +233,8 @@ def batch_process(
                         images = []
 
             if answer:
+                # 去除换行符，确保 CSV 每行对应一条记录
+                answer = answer.replace('\n', '').replace('\r', '')
                 # 截断过长回答（留有余量）
                 if len(answer) > 5000:
                     answer = answer[:5000] + "……"
