@@ -2,7 +2,7 @@
 批量作答脚本
 ======================
 读取 question_public.csv 中的用户问题，逐条调用智能体生成回答，
-输出符合 submission_example.csv 格式的提交文件。
+输出 CSV 提交文件。
 
 用法：
     python code/batch_answer.py
@@ -14,13 +14,11 @@
     - 通过输出文件（.csv）记录已写入的 id，进度文件（.progress）记录最后处理位置
     - 处理完全完成后自动清理进度文件
 
-输出格式（id,ret[,图片列表]）：
-    id,ret
-    1,回答文本 <PIC>更多内容,["imgname1","imgname2"]
-    2,回答文本
+输出格式（两列：id, ret）：
+    - 无图片：id,回答文本
+    - 有图片：id,"""回答文本 <PIC>更多内容"", [""imgname1"",""imgname2""]"
 
-注意：回答中的换行符会在写入前自动去除，确保每条记录占一行。
-有图片时附加第三列记录对应的图片名称列表。
+注意：回答中的换行符会在写入前自动去除。csv.writer 自动处理 CSV 引号转义。
 """
 
 import csv
@@ -246,9 +244,7 @@ def batch_process(
                         images = []
 
             if answer:
-                # 去除换行符，确保 CSV 每行对应一条记录
-                answer = answer.replace('\n', '').replace('\r', '')
-                # 截断过长回答（留有余量）
+                # 截断过长回答（留有余量）；换行符由 _build_ret_field 统一处理
                 if len(answer) > 5000:
                     answer = answer[:5000] + "……"
                 if images:
