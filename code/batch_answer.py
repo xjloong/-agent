@@ -14,13 +14,13 @@
     - 通过输出文件（.csv）记录已写入的 id，进度文件（.progress）记录最后处理位置
     - 处理完全完成后自动清理进度文件
 
-输出格式（两列，与 submission_example.csv 一致）：
+输出格式（id,ret[,图片列表]）：
     id,ret
-    1,回答文本 <PIC>更多内容
+    1,回答文本 <PIC>更多内容,["imgname1","imgname2"]
     2,回答文本
 
 注意：回答中的换行符会在写入前自动去除，确保每条记录占一行。
-图片信息已通过 <PIC> 标记嵌入在回答文本中。
+有图片时附加第三列记录对应的图片名称列表。
 """
 
 import csv
@@ -87,18 +87,24 @@ def generate_answer(question: str, session_id: str = "batch") -> Tuple[str, List
         return "很抱歉，智能体暂时无法回答您的问题，请稍后再试。", []
 
 
+def _csv_quote_field(field: str) -> str:
+    """对单个 CSV 字段按需加引号（含逗号、双引号或换行时）。"""
+    if ',' in field or '"' in field or '\n' in field or '\r' in field:
+        return '"' + field.replace('"', '""') + '"'
+    return field
+
+
 def write_submission_csv(
     results: List[Tuple[str, str, List[str]]],
     output_path: str,
     append: bool = False
 ):
     """
-    写入提交文件（CSV 格式：id,ret，与 submission_example.csv 一致）。
+    写入提交文件（CSV 格式：id,ret[,图片列表]）。
 
     results 中每条为 (id, answer_text, image_names)。
     回答中的换行符会被去除，确保每条记录仅占一行。
-    图片信息已通过 <PIC> 标记嵌入在回答文本中，无需额外列。
-
+    当有图片时，附加第三列：["name1","name2"]（JSON 数组格式，不额外 CSV 转义）。
     如果已有文件且 append=True，则合并（已存在的 id 保留原有结果，新增的追加）。
     """
     mode = 'a' if append else 'w'
@@ -122,10 +128,15 @@ def write_submission_csv(
         for qid, answer, images in results:
             if qid in already_written:
                 continue  # 已存在则跳过（保护已有结果）
-            # 去除回答中的换行符，确保每行只占一条 CSV 记录（与 submission_example.csv 格式一致）
-            # csv.writer 遇到含逗号/引号字段会自动加引号包裹
+            # 去除回答中的换行符，确保每行只占一条 CSV 记录
             ret = answer.replace('\n', '').replace('\r', '')
-            writer.writerow([qid, ret])
+            if images:
+                # 图片列表按 JSON 数组格式直接写入，不经过 csv.writer 的二次转义
+                images_str = "[" + ",".join(f'"{img}"' for img in images) + "]"
+                line = f'{qid},{_csv_quote_field(ret)},{images_str}\n'
+                f.write(line)
+            else:
+                writer.writerow([qid, ret])
 
     total = len(results)
     skipped = len([r for r in results if r[0] in already_written]) if append else 0
