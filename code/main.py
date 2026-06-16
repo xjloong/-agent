@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import List, Optional
+from fastapi.staticfiles import StaticFiles
 import time
 import uuid
 import re
@@ -26,6 +27,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
 
 # ==========================================
 # 环境变量与配置选项
@@ -190,6 +193,10 @@ async def chat_endpoint(request: ChatRequest, token: str = Depends(verify_author
                 "returned_images": []
             }
         }
+
+app.mount("/images", StaticFiles(directory="/home/xjl/workspace/code/-agent/images"), name="images")
+
+app.mount("/", StaticFiles(directory="/home/xjl/workspace/code/-agent/static", html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
