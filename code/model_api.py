@@ -9,48 +9,67 @@ DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 EMBED_MODEL = "text-embedding-v4"
 QWEN_MODEL = "qwen3.5-flash"
 EMBED_DIM = 1024
-API_TOKEN = "sk-c56434e9222e4c00a83997246eda6c85"  # 请替换为你自己的 API Key
 
-from openai import OpenAI
+# 建议：如果使用 dotenv，可以在这里 import 并 load_dotenv()
+# from dotenv import load_dotenv, find_dotenv
+# load_dotenv(find_dotenv())
 
-# for backward compatibility, you can still use `https://api.deepseek.com/v1` as `base_url`.
-dp_client = OpenAI(api_key="sk-46186299cb83418a9c65d99369d1cd18", base_url="https://api.deepseek.com")
+# ==========================================
+# DeepSeek 客户端配置 (已修复多进程报错问题)
+# ==========================================
+_dp_client: Optional[OpenAI] = None
+
+def get_dp_client() -> OpenAI:
+    global _dp_client
+    if _dp_client is not None:
+        return _dp_client
+        
+    api_key = os.environ.get("DEEPSEEK_API_KEY")
+    if not api_key:
+        raise RuntimeError("缺少环境变量 DEEPSEEK_API_KEY，无法调用 DeepSeek 接口。")
+        
+    _dp_client = OpenAI(
+        api_key=api_key, 
+        base_url="https://api.deepseek.com"
+    )
+    return _dp_client
+
 def ask_dp(system_prompt: str, user_text: str) -> str:
     try:
-        completion = dp_client.chat.completions.create(
-            model="deepseek-v4-pro",
+        # 在这里调用 get_dp_client()，确保只在需要时初始化
+        completion = get_dp_client().chat.completions.create(
+            model="deepseek-chat", # 注意：目前 DeepSeek 官方模型名通常是 deepseek-chat 或 deepseek-reasoner
             extra_body={"thinking": {"type": "disabled"}},
             messages=[
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': user_text}
-                ],
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_text}
+            ],
             max_tokens=1024,
             temperature=0.7,
             stream=False
         )
     except APIConnectionError as exc:
         raise RuntimeError(
-            "无法连接 deepseek-v4-pro 接口。请检查网络连通性、代理配置，"
-            f"以及服务地址 {DASHSCOPE_BASE_URL} 是否可访问。"
+            "无法连接 DeepSeek 接口。请检查网络连通性、代理配置，"
+            "以及服务地址 https://api.deepseek.com 是否可访问。" # 修复了这里的文案错误
         ) from exc
 
     return completion.choices[0].message.content
 
-
+# ==========================================
+# Qwen (DashScope) 客户端配置
+# ==========================================
 _client: Optional[OpenAI] = None
-
 
 def get_client() -> OpenAI:
     global _client
-
     if _client is not None:
         return _client
 
-    # api_key = os.getenv("DASHSCOPE_API_KEY")
-    api_key = API_TOKEN
+    api_key = os.environ.get("QWEN_API_KEY")
     if not api_key:
         raise RuntimeError(
-            "缺少环境变量 DASHSCOPE_API_KEY，无法调用 DashScope embedding 接口。"
+            "缺少环境变量 QWEN_API_KEY，无法调用 DashScope 接口。"
         )
 
     _client = OpenAI(
